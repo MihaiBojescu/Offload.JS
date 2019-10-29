@@ -45,4 +45,4 @@ async function main () {
 
 ## Examples
 
-For further usage reference, use the examples provided inside the `examples` folder.
+For further usage reference, use the examples provided inside the [examples](examples/) folder.
