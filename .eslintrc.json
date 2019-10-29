@@ -1,0 +1,24 @@
+{
+  "plugins": ["promise", "standard"],
+  "extends": ["plugin:promise/recommended", "standard"],
+  "rules": {
+      "indent": [
+          "error",
+          2,
+          {
+              "SwitchCase": 1
+          }
+      ],
+      "one-var": 2,
+      "semi": 2,
+      "keyword-spacing": ["error"],
+      "object-property-newline": ["error"],
+      "quotes": ["error"],
+      "eqeqeq": ["error", "always"],
+      "block-spacing": ["error", "always"],
+      "object-curly-spacing": ["error", "always"],
+      "eol-last": ["error", "always"],
+      "no-path-concat": "off",
+      "space-before-function-paren": ["error", "always"]
+  }
+}
