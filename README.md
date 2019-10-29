@@ -17,6 +17,8 @@ This library's purpose is to maximize NodeJs's throughput by giving the develope
 
 ## Usage
 
+After importing the library, a function is returned. Use the function (`setup` function) with your configuration as parameter. After calling the `setup` function, the following functions are available: `use`, `lock`, `run`, and a parameter called `isMaster`. Call the `use` function with the file you want to use. Use the function provided by the `use` function call to select the functions to offload. **Remember to use the `lock` function after finishing selecting the functions, as it creates the workers and sets them up!**
+
 A basic example would be:
 
 ```js
