@@ -23,7 +23,7 @@ async function main () {
     await lock()
 
     sayHello()
-    await run('sayHello')()
+    await run('sayHello')([])
 
     process.exit()
   }

@@ -25,7 +25,9 @@ function setup () {
     }
 
     async function doWork ({ title, promiseId, args }) {
-      const result = await offload.offloadMapRef()[title](...args)
+      const fn = await offload.offloadMapRef()[title]
+      const result = await args.reduce(async (previousResult, nextArgs) => (await previousResult)(...nextArgs), fn)
+
       threads.parentPort.postMessage({ promiseId, result })
     }
   }

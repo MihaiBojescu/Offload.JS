@@ -68,10 +68,10 @@ async function main () {
       result3,
       result4
     ] = await Promise.all([
-      run('add')(),
-      run('add')(),
-      run('add')(),
-      run('add')()
+      run('add')([]),
+      run('add')([]),
+      run('add')([]),
+      run('add')([])
     ])
 
     console.timeEnd(label)

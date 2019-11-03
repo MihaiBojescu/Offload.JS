@@ -79,7 +79,9 @@ function createInstance (config) {
     process.send('up')
 
     async function doWork ({ title, promiseId, args }) {
-      const result = await offloadMapRef()[title](...args)
+      const fn = await offloadMapRef()[title]
+      const result = await args.reduce(async (previousResult, nextArgs) => (await previousResult)(...nextArgs), fn)
+
       process.send({ promiseId, result })
     }
   }
