@@ -6,24 +6,19 @@
  */
 
 const threads = require('worker_threads')
-const offload = require('./offload')()
-const validTypes = ['threads', 'processes']
+const offload = require('./offload')({ type: 'threads' })
 
 setup()
 
 function setup () {
-  if (!offload.isMaster) {
+  if (!threads.isMainThread) {
     init()
   }
 
   function init () {
-    if (offload.type === validTypes[0]) {
-      threads.workerData.files.forEach(use)
-      threads.parentPort.on('message', doWork)
-      threads.parentPort.postMessage('up')
-    } else {
-      process.on('message', doWork)
-    }
+    threads.workerData.files.forEach(use)
+    threads.parentPort.on('message', doWork)
+    threads.parentPort.postMessage('up')
 
     function use (file) {
       require(file)

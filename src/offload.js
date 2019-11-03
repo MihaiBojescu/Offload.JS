@@ -27,156 +27,163 @@ const defaultConfig = {
   cyclingStrategy: simpleCyclingStrategy
 }
 
-module.exports = setup()
+let instance = null
 
-function setup () {
+module.exports = getInstance
+
+function getInstance (config) {
+  if (instance === null) {
+    instance = createInstance(config)
+  }
+
+  return instance
+}
+
+function createInstance (config) {
+  const {
+    type,
+    debug,
+    workers,
+    cyclingStrategy
+  } = { ...defaultConfig, ...config }
+
+  const isMaster = checkIfMaster()
+  const communicationFn = setCommunicationFn()
+
+  const files = []
+  const workersArray = []
+  const promiseMap = {}
   const offloadMap = {}
+  let currentWorker = 0
+  let locked = false
 
-  return config => {
-    const {
+  if (type === validTypes[1] && !isMaster) {
+    workerProcess()
+  }
+
+  return {
+    isMaster,
+
+    use,
+    lock,
+    run,
+
+    ...(!isMaster && {
       type,
-      debug,
-      workers,
-      cyclingStrategy
-    } = { ...defaultConfig, ...config }
+      offloadMapRef
+    })
+  }
 
-    const isMaster = checkIfMaster()
-    const communicationFn = setCommunicationFn()
+  function workerProcess () {
+    process.on('message', doWork)
+    process.send('up')
 
-    const files = []
-    const workersArray = []
-    const promiseMap = {}
-    let currentWorker = 0
-    let locked = false
-
-    if (type === validTypes[1] && !isMaster) {
-      workerProcess()
+    async function doWork ({ title, promiseId, args }) {
+      const result = await offloadMapRef()[title](...args)
+      process.send({ promiseId, result })
     }
+  }
 
-    return {
-      isMaster,
-
-      use,
-      lock,
-      run,
-
-      ...(!isMaster && {
-        type,
-        offloadMapRef
-      })
+  function checkIfMaster () {
+    switch (type) {
+      case validTypes[0]: return threads.isMainThread
+      case validTypes[1]: return cluster.isMaster
+      default: throw new Error('Unknown type')
     }
+  }
 
-    function workerProcess () {
-      process.on('message', doWork)
-      process.send('up')
-
-      async function doWork ({ title, promiseId, args }) {
-        const result = await offloadMapRef()[title](...args)
-        process.send({ promiseId, result })
-      }
+  function setCommunicationFn () {
+    switch (type) {
+      case validTypes[0]: return 'postMessage'
+      case validTypes[1]: return 'send'
+      default: throw new Error('Unknown type')
     }
+  }
 
-    function checkIfMaster () {
-      switch (type) {
-        case validTypes[0]: return threads.isMainThread
-        case validTypes[1]: return cluster.isMaster
-        default: throw new Error('Unknown type')
-      }
-    }
+  function offloadMapRef () {
+    return offloadMap
+  }
 
-    function setCommunicationFn () {
-      switch (type) {
-        case validTypes[0]: return 'postMessage'
-        case validTypes[1]: return 'send'
-        default: throw new Error('Unknown type')
-      }
-    }
+  function use (file) {
+    files.push(file)
 
-    function offloadMapRef () {
-      return offloadMap
-    }
+    return offload
 
-    function use (file) {
-      files.push(file)
-
-      return offload
-
-      function offload (title) {
-        return fn => {
-          if (!isMaster) {
-            debug && log(`Loading ${title} on worker`)
-            offloadMap[title] = fn
-          } else {
-            return null
-          }
-        }
-      }
-    }
-
-    async function lock () {
-      if (isMaster && !locked) {
-        locked = true
-        const initStrategy = {
-          [validTypes[0]]: initThreads,
-          [validTypes[1]]: initProcesses
-        }[type]
-
-        return initStrategy()
-      }
-
-      async function initThreads () {
-        const options = { workerData: { files } }
-        const codePath = path.resolve(`${path.dirname(__filename)}/worker.js`)
-
-        for (let i = 0; i < workers; ++i) {
-          const worker = await new Promise(resolve => {
-            const worker = new threads.Worker(codePath, options)
-            worker.once('message', message => message === 'up' && resolve(worker))
-          })
-          worker.on('message', doFinish)
-          workersArray.push(worker)
-        }
-
-        debug && log(`Done with init (type: ${type})`)
-
-        return true
-      }
-
-      async function initProcesses () {
-        for (let i = 0; i < workers; ++i) {
-          const worker = await new Promise(resolve => {
-            const worker = cluster.fork()
-            worker.once('message', message => message === 'up' && resolve(worker))
-          })
-          worker.on('message', doFinish)
-          workersArray.push(worker)
-        }
-
-        debug && log(`Done with init (type: ${type})`)
-
-        return true
-      }
-
-      async function doFinish ({ promiseId, result }) {
-        promiseMap[promiseId](result)
-      }
-    }
-
-    function run (title) {
-      return (...args) => {
-        if (isMaster) {
-          debug && log(`Running ${title}`)
-
-          const promiseId = crypto.randomBytes(4).toString('hex')
-          const promise = new Promise(resolve => (promiseMap[promiseId] = resolve))
-
-          workersArray[currentWorker][communicationFn]({ title, promiseId, args })
-          currentWorker = cyclingStrategy(currentWorker, workersArray.length - 1)
-
-          return promise
+    function offload (title) {
+      return fn => {
+        if (!isMaster) {
+          debug && log(`Loading ${title} on worker`)
+          offloadMap[title] = fn
         } else {
           return null
         }
+      }
+    }
+  }
+
+  async function lock () {
+    if (isMaster && !locked) {
+      locked = true
+      const initStrategy = {
+        [validTypes[0]]: initThreads,
+        [validTypes[1]]: initProcesses
+      }[type]
+
+      return initStrategy()
+    }
+
+    async function initThreads () {
+      const options = { workerData: { files, type } }
+      const codePath = path.resolve(`${path.dirname(__filename)}/worker.js`)
+
+      for (let i = 0; i < workers; ++i) {
+        const worker = await new Promise(resolve => {
+          const worker = new threads.Worker(codePath, options)
+          worker.once('message', message => message === 'up' && resolve(worker))
+        })
+        worker.on('message', doFinish)
+        workersArray.push(worker)
+      }
+
+      debug && log(`Done with init (type: ${type})`)
+
+      return true
+    }
+
+    async function initProcesses () {
+      for (let i = 0; i < workers; ++i) {
+        const worker = await new Promise(resolve => {
+          const worker = cluster.fork()
+          worker.once('message', message => message === 'up' && resolve(worker))
+        })
+        worker.on('message', doFinish)
+        workersArray.push(worker)
+      }
+
+      debug && log(`Done with init (type: ${type})`)
+
+      return true
+    }
+
+    async function doFinish ({ promiseId, result }) {
+      promiseMap[promiseId](result)
+    }
+  }
+
+  function run (title) {
+    return (...args) => {
+      if (isMaster) {
+        debug && log(`Running ${title}`)
+
+        const promiseId = crypto.randomBytes(4).toString('hex')
+        const promise = new Promise(resolve => (promiseMap[promiseId] = resolve))
+
+        workersArray[currentWorker][communicationFn]({ title, promiseId, args })
+        currentWorker = cyclingStrategy(currentWorker, workersArray.length - 1)
+
+        return promise
+      } else {
+        return null
       }
     }
   }
